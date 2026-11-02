@@ -1,0 +1,707 @@
+#ifndef ALGORITMOS_H
+#define ALGORITMOS_H
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <stddef.h>
+#include <stdint.h>
+
+/* ========================================================================== */
+/*                              ESTRUTURAS                                    */
+/* ========================================================================== */
+
+// Estrutura para armazenar métricas genéricas (Merge Sort)
+typedef struct {
+    unsigned long long qtde_comparacoes;
+    unsigned long long qtde_movimentos;
+} Metricas;
+
+// Estrutura para armazenar métricas do Heap Sort
+typedef struct {
+    unsigned long long comparacoes;
+    unsigned long long movimentos;
+} HeapMetricas;
+
+// Ponteiro de função para o observador de passos do Heap Sort
+typedef void (*HeapObservador)(const int *vetor, size_t tamanho, size_t pos_atual, void *contexto);
+
+// Estrutura para os baldes do Bucket Sort
+typedef struct {
+    unsigned int *valores;
+    size_t quantidade;
+    size_t capacidade;
+} Balde;
+
+/* ========================================================================== */
+/*                             1. MERGE SORT                                  */
+/* ========================================================================== */
+
+void merge(int v[], int aux[], int esq, int meio, int dir, Metricas *m) {
+    for (int k = esq; k <= dir; k++) {
+        aux[k] = v[k];
+        m->qtde_movimentos++;
+    }
+
+    int i = esq;
+    int j = meio + 1;
+
+    for (int k = esq; k <= dir; k++) {
+        if (i > meio) {
+            v[k] = aux[j++];
+            m->qtde_movimentos++;
+        } else if (j > dir) {
+            v[k] = aux[i++];
+            m->qtde_movimentos++;
+        } else {
+            m->qtde_comparacoes++;
+            if (aux[j] < aux[i]) {
+                v[k] = aux[j++];
+                m->qtde_movimentos++;
+            } else {
+                v[k] = aux[i++];
+                m->qtde_movimentos++;
+            }
+        }
+    }
+}
+
+void mergeSort(int v[], int aux[], int esq, int dir, Metricas *m) {
+    if (dir <= esq) return;
+    
+    int meio = esq + (dir - esq) / 2;
+    
+    mergeSort(v, aux, esq, meio, m);
+    mergeSort(v, aux, meio + 1, dir, m);
+    merge(v, aux, esq, meio, dir, m);
+}
+
+static int carrega_txt(const char *nome_txt, int v[], int tamanho) {
+    FILE *arquivo = fopen(nome_txt, "r");
+    if (arquivo == NULL) {
+        printf("Erro ao abrir o arquivo %s\n", nome_txt);
+        return 0;
+    }
+
+    for (int i = 0; i < tamanho; i++) {
+        if (fscanf(arquivo, "%d", &v[i]) != 1) {
+            printf("Erro ao ler o item %d do arquivo %s\n", i, nome_txt);
+            fclose(arquivo);
+            return 0;
+        }
+    }
+
+    fclose(arquivo);
+    return 1;
+}
+
+int Resultado_merge_sort() {
+    int tamanhos[] = {500, 5000, 50000, 500000, 5000000};
+    int num_arquivos = sizeof(tamanhos) / sizeof(tamanhos[0]);
+    char nome_txt[50];
+
+    printf("========================================================\n");
+    printf(" RELATORIO DE DESEMPENHO - MERGE SORT \n");
+    printf("========================================================\n\n");
+
+    for (int i = 0; i < num_arquivos; i++) {
+        int N = tamanhos[i];
+        sprintf(nome_txt, "codigos_%d.txt", N);
+
+        int *v = (int *)malloc(N * sizeof(int));
+        int *aux = (int *)malloc(N * sizeof(int));
+
+        if (v == NULL || aux == NULL) {
+            printf("Erro de alocacao de memoria para N=%d\n", N);
+            free(v); free(aux);
+            return 1;
+        }
+
+        if (!carrega_txt(nome_txt, v, N)) {
+            free(v); free(aux);
+            continue;
+        }
+
+        Metricas metricas = {0, 0};
+        long memoria_extra_bytes = N * sizeof(int);
+        double memoria_extra_mb = (double)memoria_extra_bytes / (1024 * 1024);
+
+        clock_t inicio = clock();
+        mergeSort(v, aux, 0, N - 1, &metricas);
+        clock_t fim = clock();
+        double tempo_gasto = (double)(fim - inicio) / CLOCKS_PER_SEC;
+
+        printf("Arquivo: %s\n", nome_txt);
+        printf("- Tamanho da Entrada        : %d codigos\n", N);
+        printf("- Tempo de Execucao         : %f segundos\n", tempo_gasto);
+        printf("- Quantidade de comparacoes : %llu\n", metricas.qtde_comparacoes);
+        printf("- Quantidade de movimentos  : %llu\n", metricas.qtde_movimentos);
+        if (memoria_extra_mb >= 1.0) {
+            printf("- Memoria Extra Usada       : %.2f MB\n", memoria_extra_mb);
+        } else {
+            printf("- Memoria Extra Usada       : %ld Bytes (%.2f KB)\n", memoria_extra_bytes, (double)memoria_extra_bytes / 1024);
+        }
+        printf("--------------------------------------------------------\n");
+
+        free(v);
+        free(aux);
+    }
+
+    return 0;
+}
+
+/* ========================================================================== */
+/*                              2. HEAP SORT                                  */
+/* ========================================================================== */
+
+static void ajustar_max_heap(int *vetor, size_t tamanho, size_t raiz, HeapMetricas *metricas) {
+    int valor = vetor[raiz];
+    size_t atual = raiz;
+
+    while (atual < tamanho / 2) {
+        size_t maior_filho = 2 * atual + 1;
+
+        if (maior_filho + 1 < tamanho) {
+            if (metricas != NULL) metricas->comparacoes++;
+            if (vetor[maior_filho + 1] > vetor[maior_filho]) {
+                ++maior_filho;
+            }
+        }
+
+        if (metricas != NULL) metricas->comparacoes++;
+        if (valor >= vetor[maior_filho]) {
+            break;
+        }
+
+        vetor[atual] = vetor[maior_filho];
+        if (metricas != NULL) metricas->movimentos++;
+        atual = maior_filho;
+    }
+
+    vetor[atual] = valor;
+    if (metricas != NULL) metricas->movimentos++;
+}
+
+static void heap_sort_interno(int *vetor, size_t quantidade,
+                              HeapObservador observador, void *contexto,
+                              HeapMetricas *metricas)
+{
+    size_t raiz;
+    size_t fim;
+
+    if (metricas != NULL) {
+        metricas->comparacoes = 0;
+        metricas->movimentos = 0;
+    }
+    if (vetor == NULL || quantidade < 2) {
+        return;
+    }
+
+    for (raiz = quantidade / 2; raiz > 0; ) {
+        --raiz;
+        ajustar_max_heap(vetor, quantidade, raiz, metricas);
+    }
+    if (observador != NULL) {
+        observador(vetor, quantidade, quantidade, contexto);
+    }
+
+    for (fim = quantidade - 1; fim > 0; --fim) {
+        int temporario = vetor[0];
+        vetor[0] = vetor[fim];
+        vetor[fim] = temporario;
+        if (metricas != NULL) metricas->movimentos += 3;
+
+        ajustar_max_heap(vetor, fim, 0, metricas);
+        if (observador != NULL) {
+            observador(vetor, quantidade, fim, contexto);
+        }
+    }
+}
+
+void heap_sort(int *vetor, size_t quantidade) {
+    heap_sort_interno(vetor, quantidade, NULL, NULL, NULL);
+}
+
+void heap_sort_com_passos(int *vetor, size_t quantidade, HeapObservador observador, void *contexto) {
+    heap_sort_interno(vetor, quantidade, observador, contexto, NULL);
+}
+
+void heap_sort_com_metricas(int *vetor, size_t quantidade, HeapMetricas *metricas) {
+    heap_sort_interno(vetor, quantidade, NULL, NULL, metricas);
+}
+
+int heap_esta_ordenado(const int *vetor, size_t quantidade) {
+    size_t i;
+    if (vetor == NULL) {
+        return quantidade == 0;
+    }
+    for (i = 1; i < quantidade; ++i) {
+        if (vetor[i - 1] > vetor[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int Resultado_heap_sort() {
+    int tamanhos[] = {500, 5000, 50000, 500000, 5000000};
+    int num_arquivos = sizeof(tamanhos) / sizeof(tamanhos[0]);
+    char nome_txt[50];
+
+    printf("========================================================\n");
+    printf(" RELATORIO DE DESEMPENHO - HEAP SORT \n");
+    printf("========================================================\n\n");
+
+    for (int i = 0; i < num_arquivos; i++) {
+        int N = tamanhos[i];
+        sprintf(nome_txt, "codigos_%d.txt", N);
+
+        int *v = (int *)malloc(N * sizeof(int));
+        if (v == NULL) {
+            printf("Erro de alocacao de memoria para N=%d\n", N);
+            return 1;
+        }
+
+        if (!carrega_txt(nome_txt, v, N)) {
+            free(v);
+            continue;
+        }
+
+        HeapMetricas metricas = {0, 0};
+
+        clock_t inicio = clock();
+        heap_sort_com_metricas(v, N, &metricas);
+        clock_t fim = clock();
+        double tempo_gasto = (double)(fim - inicio) / CLOCKS_PER_SEC;
+
+        printf("Arquivo: %s\n", nome_txt);
+        printf("- Tamanho da Entrada        : %d codigos\n", N);
+        printf("- Tempo de Execucao         : %f segundos\n", tempo_gasto);
+        printf("- Quantidade de comparacoes : %llu\n", metricas.comparacoes);
+        printf("- Quantidade de movimentos  : %llu\n", metricas.movimentos);
+        printf("- Memoria Extra Usada       : 0 Bytes (In-place)\n");
+        printf("--------------------------------------------------------\n");
+
+        free(v);
+    }
+
+    return 0;
+}
+
+/* ========================================================================== */
+/*                             3. BUCKET SORT                                 */
+/* ========================================================================== */
+
+static unsigned long long comparacoesBucket = 0;
+
+unsigned long long bucketSortQuantidadeComparacoes(void) {
+    return comparacoesBucket;
+}
+
+size_t bucketSortMemoriaExtra(size_t quantidadeBaldes, const size_t quantidades[]) {
+    size_t memoria = quantidadeBaldes * (sizeof(Balde) + sizeof(size_t));
+    size_t i;
+
+    for (i = 0; i < quantidadeBaldes; i++) {
+        size_t capacidade = 0;
+        if (quantidades[i] > 0) {
+            capacidade = 8;
+            while (capacidade < quantidades[i]) {
+                if (capacidade > SIZE_MAX / 2) {
+                    return SIZE_MAX;
+                }
+                capacidade *= 2;
+            }
+            if (capacidade > (SIZE_MAX - memoria) / sizeof(unsigned int)) {
+                return SIZE_MAX;
+            }
+            memoria += capacidade * sizeof(unsigned int);
+        }
+    }
+
+    return memoria;
+}
+
+static size_t calcularQuantidadeBaldes(size_t n) {
+    size_t b = 1;
+
+    if (n <= 1) {
+        return 1;
+    }
+
+    while (b < n / b || (b == n / b && n % b != 0)) {
+        if (b == SIZE_MAX) {
+            return n;
+        }
+        ++b;
+    }
+
+    return b;
+}
+
+static int compararNumeros(const void *a, const void *b) {
+    unsigned int numeroA = *(const unsigned int *)a;
+    unsigned int numeroB = *(const unsigned int *)b;
+
+    comparacoesBucket++;
+    if (numeroA < numeroB) return -1;
+    if (numeroA > numeroB) return 1;
+    return 0;
+}
+
+static void liberarBaldes(Balde *baldes, size_t quantidadeBaldes) {
+    size_t i;
+
+    if (baldes == NULL) {
+        return;
+    }
+
+    for (i = 0; i < quantidadeBaldes; i++) {
+        free(baldes[i].valores);
+    }
+
+    free(baldes);
+}
+
+static int adicionarAoBalde(Balde *balde, unsigned int valor, unsigned long long *movimentacoes) {
+    if (balde->quantidade == balde->capacidade) {
+        size_t novaCapacidade;
+        unsigned int *temporario;
+
+        if (balde->capacidade == 0) {
+            novaCapacidade = 8;
+        } else {
+            if (balde->capacidade > SIZE_MAX / 2) {
+                return 0;
+            }
+            novaCapacidade = balde->capacidade * 2;
+        }
+
+        if (novaCapacidade > SIZE_MAX / sizeof(unsigned int)) {
+            return 0;
+        }
+
+        temporario = (unsigned int *)realloc(balde->valores, novaCapacidade * sizeof(unsigned int));
+
+        if (temporario == NULL) {
+            return 0;
+        }
+
+        balde->valores = temporario;
+        balde->capacidade = novaCapacidade;
+    }
+
+    balde->valores[balde->quantidade++] = valor;
+
+    if (movimentacoes != NULL) {
+        (*movimentacoes)++;
+    }
+
+    return 1;
+}
+
+int bucketSort(unsigned int *vetor, size_t n, unsigned long long *movimentacoes,
+               size_t *quantidadeBaldes, size_t **quantidadesPorBalde) {
+    Balde *baldes;
+    unsigned int menor, maior;
+    size_t i, indiceBalde, posicao = 0;
+
+    if (movimentacoes != NULL) {
+        *movimentacoes = 0;
+    }
+    comparacoesBucket = 0;
+
+    if (quantidadeBaldes == NULL || quantidadesPorBalde == NULL) {
+        return 0;
+    }
+
+    *quantidadeBaldes = 0;
+    *quantidadesPorBalde = NULL;
+
+    if (n == 0) {
+        return 1;
+    }
+
+    if (vetor == NULL) {
+        return 0;
+    }
+
+    menor = maior = vetor[0];
+
+    for (i = 1; i < n; i++) {
+        if (vetor[i] < menor) menor = vetor[i];
+        if (vetor[i] > maior) maior = vetor[i];
+    }
+
+    *quantidadeBaldes = calcularQuantidadeBaldes(n);
+
+    if (*quantidadeBaldes > SIZE_MAX / sizeof(Balde) ||
+        *quantidadeBaldes > SIZE_MAX / sizeof(size_t)) {
+        *quantidadeBaldes = 0;
+        return 0;
+    }
+
+    baldes = (Balde *)calloc(*quantidadeBaldes, sizeof(Balde));
+    if (baldes == NULL) {
+        *quantidadeBaldes = 0;
+        return 0;
+    }
+
+    *quantidadesPorBalde = (size_t *)calloc(*quantidadeBaldes, sizeof(size_t));
+
+    if (*quantidadesPorBalde == NULL) {
+        free(baldes);
+        *quantidadeBaldes = 0;
+        return 0;
+    }
+
+    for (i = 0; i < n; i++) {
+        indiceBalde = 0;
+
+        if (maior != menor) {
+            long double proporcao = ((long double)vetor[i] - (long double)menor) /
+                                    ((long double)maior - (long double)menor);
+
+            indiceBalde = (size_t)(proporcao * (long double)(*quantidadeBaldes - 1));
+
+            if (indiceBalde >= *quantidadeBaldes) {
+                indiceBalde = *quantidadeBaldes - 1;
+            }
+        }
+
+        if (!adicionarAoBalde(&baldes[indiceBalde], vetor[i], movimentacoes)) {
+            liberarBaldes(baldes, *quantidadeBaldes);
+            free(*quantidadesPorBalde);
+            *quantidadesPorBalde = NULL;
+            *quantidadeBaldes = 0;
+            return 0;
+        }
+    }
+
+    for (i = 0; i < *quantidadeBaldes; i++) {
+        (*quantidadesPorBalde)[i] = baldes[i].quantidade;
+
+        if (baldes[i].quantidade > 1) {
+            qsort(baldes[i].valores, baldes[i].quantidade, sizeof(unsigned int), compararNumeros);
+        }
+    }
+
+    for (i = 0; i < *quantidadeBaldes; i++) {
+        size_t j;
+
+        for (j = 0; j < baldes[i].quantidade; j++) {
+            vetor[posicao++] = baldes[i].valores[j];
+
+            if (movimentacoes != NULL) {
+                (*movimentacoes)++;
+            }
+        }
+    }
+
+    liberarBaldes(baldes, *quantidadeBaldes);
+    return 1;
+}
+
+int Resultado_buckt_sort(int argc, char *argv[]) {
+    FILE *arquivoEntrada;
+    FILE *arquivoSaida;
+    unsigned int *numeros = NULL;
+    unsigned int numero;
+    size_t quantidade = 0;
+    size_t capacidade = 0;
+    size_t i;
+    size_t quantidadeBaldes = 0;
+    size_t *quantidadesPorBalde = NULL;
+    unsigned long long movimentacoes = 0;
+    clock_t inicio, fim;
+    double tempo;
+    size_t menorQuantidade = 0;
+    size_t maiorQuantidade = 0;
+    size_t baldesVazios = 0;
+    size_t baldesOcupados = 0;
+    size_t totalDistribuido = 0;
+    double mediaPorBalde = 0.0;
+    size_t memoriaExtraBytes = 0;
+
+    if (argc != 3) {
+        fprintf(stderr, "Uso: %s arquivo_entrada arquivo_saida\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    arquivoEntrada = fopen(argv[1], "r");
+    if (arquivoEntrada == NULL) {
+        perror("Erro ao abrir o arquivo de entrada");
+        return EXIT_FAILURE;
+    }
+
+    while (fscanf(arquivoEntrada, "%u", &numero) == 1) {
+        if (quantidade == capacidade) {
+            size_t novaCapacidade;
+            unsigned int *temporario;
+
+            if (capacidade == 0) {
+                novaCapacidade = 1024;
+            } else {
+                if (capacidade > SIZE_MAX / 2) {
+                    fprintf(stderr, "Erro: quantidade de numeros muito grande.\n");
+                    free(numeros);
+                    fclose(arquivoEntrada);
+                    return EXIT_FAILURE;
+                }
+                novaCapacidade = capacidade * 2;
+            }
+
+            if (novaCapacidade > SIZE_MAX / sizeof(unsigned int)) {
+                fprintf(stderr, "Erro: quantidade de numeros muito grande.\n");
+                free(numeros);
+                fclose(arquivoEntrada);
+                return EXIT_FAILURE;
+            }
+
+            temporario = (unsigned int *)realloc(numeros, novaCapacidade * sizeof(unsigned int));
+
+            if (temporario == NULL) {
+                fprintf(stderr, "Erro ao alocar memoria para os numeros.\n");
+                free(numeros);
+                fclose(arquivoEntrada);
+                return EXIT_FAILURE;
+            }
+
+            numeros = temporario;
+            capacidade = novaCapacidade;
+        }
+
+        numeros[quantidade++] = numero;
+    }
+
+    if (ferror(arquivoEntrada)) {
+        fprintf(stderr, "Erro durante a leitura do arquivo de entrada.\n");
+        free(numeros);
+        fclose(arquivoEntrada);
+        return EXIT_FAILURE;
+    }
+
+    fclose(arquivoEntrada);
+
+    if (quantidade == 0) {
+        fprintf(stderr, "O arquivo nao possui numeros validos.\n");
+        free(numeros);
+        return EXIT_FAILURE;
+    }
+
+    printf("========================================\n");
+    printf("        ORDENACAO POR BUCKET SORT\n");
+    printf("========================================\n");
+    printf("Arquivo de entrada: %s\n", argv[1]);
+    printf("Quantidade de numeros: %zu\n", quantidade);
+
+    inicio = clock();
+
+    if (!bucketSort(numeros, quantidade, &movimentacoes, &quantidadeBaldes, &quantidadesPorBalde)) {
+        fprintf(stderr, "Erro durante a ordenacao.\n");
+        free(quantidadesPorBalde);
+        free(numeros);
+        return EXIT_FAILURE;
+    }
+
+    fim = clock();
+    tempo = (double)(fim - inicio) / CLOCKS_PER_SEC;
+    memoriaExtraBytes = bucketSortMemoriaExtra(quantidadeBaldes, quantidadesPorBalde);
+
+    if (quantidadeBaldes > 0) {
+        menorQuantidade = quantidadesPorBalde[0];
+
+        for (i = 0; i < quantidadeBaldes; i++) {
+            size_t qtd = quantidadesPorBalde[i];
+
+            totalDistribuido += qtd;
+
+            if (qtd < menorQuantidade) menorQuantidade = qtd;
+            if (qtd > maiorQuantidade) maiorQuantidade = qtd;
+            if (qtd == 0) baldesVazios++;
+            else baldesOcupados++;
+        }
+
+        mediaPorBalde = (double)totalDistribuido / (double)quantidadeBaldes;
+    }
+
+    printf("\n========== RESUMO DOS BALDES ==========\n");
+    printf("Total de numeros distribuidos: %zu\n", totalDistribuido);
+    printf("Total de baldes criados: %zu\n", quantidadeBaldes);
+    printf("Media de numeros por balde: %d\n", (int)mediaPorBalde);
+    printf("Menor quantidade em um balde: %zu\n", menorQuantidade);
+    printf("Maior quantidade em um balde: %zu\n", maiorQuantidade);
+    printf("Baldes vazios: %zu\n", baldesVazios);
+    printf("Baldes ocupados: %zu\n", baldesOcupados);
+    printf("=======================================\n");
+
+    arquivoSaida = fopen(argv[2], "w");
+    if (arquivoSaida == NULL) {
+        perror("Erro ao criar o arquivo de saida");
+        free(quantidadesPorBalde);
+        free(numeros);
+        return EXIT_FAILURE;
+    }
+
+    for (i = 0; i < quantidade; i++) {
+        if (fprintf(arquivoSaida, "%u\n", numeros[i]) < 0) {
+            fprintf(stderr, "Erro ao gravar os numeros no arquivo de saida.\n");
+            fclose(arquivoSaida);
+            free(quantidadesPorBalde);
+            free(numeros);
+            return EXIT_FAILURE;
+        }
+    }
+
+    if (fclose(arquivoSaida) != 0) {
+        perror("Erro ao fechar o arquivo de saida");
+        free(quantidadesPorBalde);
+        free(numeros);
+        return EXIT_FAILURE;
+    }
+
+    printf("\n========== RESULTADO FINAL ==========\n");
+    printf("Ordenacao concluida!\n");
+    printf("Tempo da ordenacao: %.6f segundos\n", tempo);
+    printf("Movimentacoes registradas: %llu\n", movimentacoes);
+    printf("Comparacoes realizadas pelo qsort: %llu\n", bucketSortQuantidadeComparacoes());
+    if (memoriaExtraBytes >= 1024 * 1024) {
+        printf("Memoria Extra Usada: %.2f MB\n", (double)memoriaExtraBytes / (1024.0 * 1024.0));
+    } else {
+        printf("Memoria Extra Usada: %zu Bytes (%.2f KB)\n",
+               memoriaExtraBytes, (double)memoriaExtraBytes / 1024.0);
+    }
+    printf("Arquivo gerado: %s\n", argv[2]);
+    printf("=====================================\n");
+
+    free(quantidadesPorBalde);
+    free(numeros);
+    return EXIT_SUCCESS;
+}
+
+int Resultado_bucket_sort_lote() {
+    int tamanhos[] = {500, 5000, 50000, 500000, 5000000};
+    int num_arquivos = sizeof(tamanhos) / sizeof(tamanhos[0]);
+    char nome_txt_entrada[50];
+    char nome_txt_saida[50];
+
+    printf("========================================================\n");
+    printf(" RELATORIO DE DESEMPENHO - BUCKET SORT \n");
+    printf("========================================================\n\n");
+
+    for (int i = 0; i < num_arquivos; i++) {
+        int N = tamanhos[i];
+        sprintf(nome_txt_entrada, "codigos_%d.txt", N);
+        sprintf(nome_txt_saida, "codigos_%d_ordenado.txt", N);
+
+        // Prepara os argumentos no formato que a função Resultado_buckt_sort espera
+        char *argv[] = {"bucket_sort", nome_txt_entrada, nome_txt_saida};
+        
+        Resultado_buckt_sort(3, argv);
+        printf("\n");
+    }
+
+    return 0;
+}
+
+#endif // ALGORITMOS_H
