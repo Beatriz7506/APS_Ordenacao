@@ -339,14 +339,27 @@ static size_t calcularQuantidadeBaldes(size_t n) {
     return b;
 }
 
-static int compararNumeros(const void *a, const void *b) {
-    unsigned int numeroA = *(const unsigned int *)a;
-    unsigned int numeroB = *(const unsigned int *)b;
+// Ordenação interna customizada (Insertion Sort) com rastreamento completo de métricas
+static void insertionSortBalde(unsigned int *arr, size_t n, unsigned long long *movimentacoes) {
+    size_t i;
+    for (i = 1; i < n; i++) {
+        unsigned int chave = arr[i];
+        if (movimentacoes != NULL) (*movimentacoes)++;
 
-    comparacoesBucket++;
-    if (numeroA < numeroB) return -1;
-    if (numeroA > numeroB) return 1;
-    return 0;
+        long long j = (long long)i - 1;
+        while (j >= 0) {
+            comparacoesBucket++;
+            if (arr[j] > chave) {
+                arr[j + 1] = arr[j];
+                if (movimentacoes != NULL) (*movimentacoes)++;
+                j--;
+            } else {
+                break;
+            }
+        }
+        arr[j + 1] = chave;
+        if (movimentacoes != NULL) (*movimentacoes)++;
+    }
 }
 
 static void liberarBaldes(Balde *baldes, size_t quantidadeBaldes) {
@@ -482,7 +495,7 @@ int bucketSort(unsigned int *vetor, size_t n, unsigned long long *movimentacoes,
         (*quantidadesPorBalde)[i] = baldes[i].quantidade;
 
         if (baldes[i].quantidade > 1) {
-            qsort(baldes[i].valores, baldes[i].quantidade, sizeof(unsigned int), compararNumeros);
+            insertionSortBalde(baldes[i].valores, baldes[i].quantidade, movimentacoes);
         }
     }
 
@@ -664,7 +677,7 @@ int Resultado_buckt_sort(int argc, char *argv[]) {
     printf("Ordenacao concluida!\n");
     printf("Tempo da ordenacao: %.6f segundos\n", tempo);
     printf("Movimentacoes registradas: %llu\n", movimentacoes);
-    printf("Comparacoes realizadas pelo qsort: %llu\n", bucketSortQuantidadeComparacoes());
+    printf("Comparacoes realizadas no total: %llu\n", bucketSortQuantidadeComparacoes());
     if (memoriaExtraBytes >= 1024 * 1024) {
         printf("Memoria Extra Usada: %.2f MB\n", (double)memoriaExtraBytes / (1024.0 * 1024.0));
     } else {
@@ -694,7 +707,6 @@ int Resultado_bucket_sort_lote() {
         sprintf(nome_txt_entrada, "codigos_%d.txt", N);
         sprintf(nome_txt_saida, "codigos_%d_ordenado.txt", N);
 
-        // Prepara os argumentos no formato que a função Resultado_buckt_sort espera
         char *argv[] = {"bucket_sort", nome_txt_entrada, nome_txt_saida};
         
         Resultado_buckt_sort(3, argv);
